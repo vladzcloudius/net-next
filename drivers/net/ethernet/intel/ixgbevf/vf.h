@@ -212,4 +212,5 @@ int ixgbevf_negotiate_api_version(struct ixgbe_hw *hw, int api);
 int ixgbevf_get_queues(struct ixgbe_hw *hw, unsigned int *num_tcs,
 		       unsigned int *default_tc);
 int ixgbevf_get_reta(struct ixgbevf_adapter *adapter, u32 *reta);
+int ixgbevf_get_rss_key(struct ixgbevf_adapter *adapter, u8 *rss_key);
 #endif /* __IXGBE_VF_H__ */
