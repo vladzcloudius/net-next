@@ -433,6 +433,7 @@ static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 #endif /* CONFIG_FCOE */
 		switch (adapter->vfinfo[vf].vf_api) {
 		case ixgbe_mbox_api_11:
+		case ixgbe_mbox_api_12:
 			/*
 			 * Version 1.1 supports jumbo frames on VFs if PF has
 			 * jumbo frames enabled which means legacy VFs are
@@ -900,6 +901,7 @@ static int ixgbe_negotiate_vf_api(struct ixgbe_adapter *adapter,
 	switch (api) {
 	case ixgbe_mbox_api_10:
 	case ixgbe_mbox_api_11:
+	case ixgbe_mbox_api_12:
 		adapter->vfinfo[vf].vf_api = api;
 		return 0;
 	default:
@@ -923,6 +925,7 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 	switch (adapter->vfinfo[vf].vf_api) {
 	case ixgbe_mbox_api_20:
 	case ixgbe_mbox_api_11:
+	case ixgbe_mbox_api_12:
 		break;
 	default:
 		return -1;
@@ -946,6 +949,47 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 
 	/* notify VF of default queue */
 	msgbuf[IXGBE_VF_DEF_QUEUE] = default_tc;
+
+	return 0;
+}
+
+static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
+{
+	u32 i, j;
+	u32 *out_buf = &msgbuf[1];
+	const u8 *reta = adapter->rss_indir_tbl;
+	u8 mask = 0;
+	u32 reta_size = ixgbe_rss_indir_tbl_entries(adapter);
+
+	/* verify the PF is supporting the correct API */
+	if (!adapter->vfinfo[vf].rss_query_enabled ||
+	    (adapter->vfinfo[vf].vf_api != ixgbe_mbox_api_12))
+		return -EPERM;
+
+	/* The redirection table is composed as follows:
+	 * 82598: 128 (8 bit wide) entries containing pair of 4 bit RSS indices
+	 * 82599/X540: 128 (8 bit wide) entries containing 4 bit RSS index
+	 *
+	 * HW allows VF to be configured to have 2 or 4 RSS queues. VF may also
+	 * be configured without RSS. In the later case we will return the
+	 * "all-zeroes" indirection table implying that all inbound traffic will
+	 * we forwarded to queue 0.
+	 */
+
+	if (adapter->num_rx_queues_per_pool > 3)
+		mask = 0x03;
+	else if (adapter->num_rx_queues_per_pool > 1)
+		mask = 0x01;
+
+	/* Compress the RETA by saving only 2 bits from each entry. This way
+	 * we will be able to transfer the whole RETA in a single mailbox
+	 * operation.
+	 */
+	for (i = 0; i < reta_size / 16; i++) {
+		out_buf[i] = 0;
+		for (j = 0; j < 16; j++)
+			out_buf[i] |= (u32)(reta[16 * i + j] & mask) << (2 * j);
+	}
 
 	return 0;
 }
@@ -1005,6 +1049,9 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		break;
 	case IXGBE_VF_GET_QUEUES:
 		retval = ixgbe_get_vf_queues(adapter, msgbuf, vf);
+		break;
+	case IXGBE_VF_GET_RETA:
+		retval = ixgbe_get_vf_reta(adapter, msgbuf, vf);
 		break;
 	default:
 		e_err(drv, "Unhandled Msg %8.8x\n", msgbuf[0]);
