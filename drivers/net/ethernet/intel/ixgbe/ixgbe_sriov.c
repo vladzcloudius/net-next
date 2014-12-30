@@ -1016,6 +1016,30 @@ static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 	return 0;
 }
 
+static int ixgbe_get_vf_rss_key(struct ixgbe_adapter *adapter,
+				u32 *msgbuf, u32 vf)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int i;
+	u32 *rss_key = &msgbuf[1];
+
+	/* verify the PF is supporting the correct API */
+	if (!adapter->vfinfo[vf].rss_query_enabled ||
+	    (adapter->vfinfo[vf].vf_api != ixgbe_mbox_api_12))
+		return -EPERM;
+
+	/* Read the RSS KEY */
+	if (hw->mac.type >= ixgbe_mac_X550) {
+		for (i = 0; i < 10; i++)
+			rss_key[i] = IXGBE_READ_REG(hw,
+						IXGBE_PFVFRSSRK(i, vf));
+	} else
+		for (i = 0; i < 10; i++)
+			rss_key[i] = IXGBE_READ_REG(hw, IXGBE_RSSRK(i));
+
+	return 0;
+}
+
 static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 {
 	u32 mbx_size = IXGBE_VFMAILBOX_SIZE;
@@ -1074,6 +1098,9 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		break;
 	case IXGBE_VF_GET_RETA:
 		retval = ixgbe_get_vf_reta(adapter, msgbuf, vf);
+		break;
+	case IXGBE_VF_GET_RSS_KEY:
+		retval = ixgbe_get_vf_rss_key(adapter, msgbuf, vf);
 		break;
 	default:
 		e_err(drv, "Unhandled Msg %8.8x\n", msgbuf[0]);
