@@ -433,6 +433,7 @@ static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 #endif /* CONFIG_FCOE */
 		switch (adapter->vfinfo[vf].vf_api) {
 		case ixgbe_mbox_api_11:
+		case ixgbe_mbox_api_12:
 			/*
 			 * Version 1.1 supports jumbo frames on VFs if PF has
 			 * jumbo frames enabled which means legacy VFs are
@@ -900,6 +901,7 @@ static int ixgbe_negotiate_vf_api(struct ixgbe_adapter *adapter,
 	switch (api) {
 	case ixgbe_mbox_api_10:
 	case ixgbe_mbox_api_11:
+	case ixgbe_mbox_api_12:
 		adapter->vfinfo[vf].vf_api = api;
 		return 0;
 	default:
@@ -923,6 +925,7 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 	switch (adapter->vfinfo[vf].vf_api) {
 	case ixgbe_mbox_api_20:
 	case ixgbe_mbox_api_11:
+	case ixgbe_mbox_api_12:
 		break;
 	default:
 		return -1;
@@ -946,6 +949,57 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 
 	/* notify VF of default queue */
 	msgbuf[IXGBE_VF_DEF_QUEUE] = default_tc;
+
+	return 0;
+}
+
+static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	int i;
+	u32 *reta = &msgbuf[1];
+	u32 mask = 0;
+	u32 psrtype;
+	u32 reta_offset_dw = msgbuf[IXGBE_VF_RETA_OFFSET];
+	u32 dwords = msgbuf[IXGBE_VF_RETA_SZ];
+
+	/* verify the PF is supporting the correct API */
+	if (!adapter->vfinfo[vf].rss_query_enabled ||
+	    (adapter->vfinfo[vf].vf_api != ixgbe_mbox_api_12))
+		return -EPERM;
+
+	psrtype = IXGBE_READ_REG(hw, IXGBE_PSRTYPE(vf));
+
+	/* The redirection table is composed as follows:
+	 * 82598: 128 (8 bit wide) entries containing pair of 4 bit RSS indices
+	 * 82599/X540: 128 (8 bit wide) entries containing 4 bit RSS index
+	 *
+	 * PSRTYPE[n].RQPL defines if 0, 1 or 2 bits from the redirection table
+	 * value should be used.
+	 */
+
+	if ((psrtype & (1 << 29)) == (1 << 29))
+		mask = 0x01010101;
+	else if ((psrtype & (2 << 29)) == (2 << 29))
+		mask = 0x03030303;
+	else
+		mask = 0;
+
+	switch (hw->mac.type) {
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		/* Read the appropriate portion of RETA */
+		for (i = 0; i < dwords; i++)
+			reta[i] = IXGBE_READ_REG(hw,
+						IXGBE_RETA(i + reta_offset_dw));
+		break;
+	default:
+		return -1;
+	}
+
+	/* Mask the relevant bits */
+	for (i = 0; i < dwords; i++)
+		reta[i] &= mask;
 
 	return 0;
 }
@@ -1005,6 +1059,9 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		break;
 	case IXGBE_VF_GET_QUEUES:
 		retval = ixgbe_get_vf_queues(adapter, msgbuf, vf);
+		break;
+	case IXGBE_VF_GET_RETA:
+		retval = ixgbe_get_vf_reta(adapter, msgbuf, vf);
 		break;
 	default:
 		e_err(drv, "Unhandled Msg %8.8x\n", msgbuf[0]);
