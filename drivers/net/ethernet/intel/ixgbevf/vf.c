@@ -325,6 +325,66 @@ static inline int _ixgbevf_get_reta(struct ixgbevf_adapter *a,
 	return rc;
 }
 
+static inline int ixgbevf_get_rss_key_locked(struct ixgbe_hw *hw, u8 *rss_key)
+{
+	int err;
+	u32 msgbuf[IXGBE_VFMAILBOX_SIZE];
+
+	/* Return and error if API doesn't support RSS Random Key retrieval */
+	if (hw->api_version != ixgbe_mbox_api_12)
+		return -EPERM;
+
+	msgbuf[0] = IXGBE_VF_GET_RSS_KEY;
+	err = hw->mbx.ops.write_posted(hw, msgbuf, 1);
+
+	if (err)
+		return err;
+
+	err = hw->mbx.ops.read_posted(hw, msgbuf, 11);
+
+	if (err)
+		return err;
+
+	msgbuf[0] &= ~IXGBE_VT_MSGTYPE_CTS;
+
+	/* If the operation has been refused by a PF return -EPERM */
+	if (msgbuf[0] == (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_NACK))
+		return -EPERM;
+
+	/* If we didn't get an ACK there must have been
+	 * some sort of mailbox error so we should treat it
+	 * as such.
+	 */
+	if (msgbuf[0] != (IXGBE_VF_GET_RSS_KEY | IXGBE_VT_MSGTYPE_ACK))
+		return IXGBE_ERR_MBX;
+
+	memcpy(rss_key, msgbuf + 1, 40);
+
+	return 0;
+}
+
+/**
+ * ixgbevf_get_rss_key - get the RSS Random Key
+ * @hw: pointer to the HW structure
+ * @reta: buffer to fill with RETA contents.
+ *
+ * The "rss_key" buffer should be big enough to contain 10 registers.
+ * Ensures the atomicy of a mailbox access using the adapter.mbx_lock spinlock.
+ *
+ * Returns: 0 on success.
+ *          if API doesn't support this operation - (-EPERM).
+ */
+int ixgbevf_get_rss_key(struct ixgbevf_adapter *a, u8 *rss_key)
+{
+	int rc;
+
+	spin_lock_bh(&a->mbx_lock);
+	rc = ixgbevf_get_rss_key_locked(&a->hw, rss_key);
+	spin_unlock_bh(&a->mbx_lock);
+
+	return rc;
+}
+
 /**
  * ixgbevf_get_reta - get the RSS redirection table (RETA) contents.
  * @adapter: pointer to the port handle
