@@ -258,6 +258,93 @@ static s32 ixgbevf_set_uc_addr_vf(struct ixgbe_hw *hw, u32 index, u8 *addr)
 	return ret_val;
 }
 
+static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
+				    u32 *reta, u32 reta_offset_dw, u32 dwords)
+{
+	int err;
+
+	msgbuf[0]                    = IXGBE_VF_GET_RETA;
+	msgbuf[IXGBE_VF_RETA_SZ]     = dwords;
+	msgbuf[IXGBE_VF_RETA_OFFSET] = reta_offset_dw;
+
+	err = hw->mbx.ops.write_posted(hw, msgbuf, 3);
+
+	if (err)
+		return err;
+
+	err = hw->mbx.ops.read_posted(hw, msgbuf, 1 + dwords);
+
+	if (err)
+		return err;
+
+	msgbuf[0] &= ~IXGBE_VT_MSGTYPE_CTS;
+
+	/* If we didn't get an ACK there must have been
+	 * some sort of mailbox error so we should treat it
+	 * as such.
+	 */
+	if (msgbuf[0] != (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_ACK))
+		return IXGBE_ERR_MBX;
+
+	memcpy(reta + reta_offset_dw, msgbuf + 1, 4 * dwords);
+
+	return 0;
+}
+
+/**
+ * ixgbevf_get_reta - get the RSS redirection table (RETA) contents.
+ * @hw: pointer to the HW structure
+ * @reta: buffer to fill with RETA contents.
+ *
+ * The "reta" buffer should be big enough to contain 32 registers.
+ *
+ * Returns: 0 on success.
+ *          if API doesn't support this operation - (-EPERM).
+ */
+int ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *reta)
+{
+	int err;
+	u32 msgbuf[IXGBE_VFMAILBOX_SIZE];
+
+	/* Return an error if API doesn't RETA querying. */
+	if (hw->api_version != ixgbe_mbox_api_12)
+		return -EPERM;
+
+	/* x550 devices have a separate RETA for each VF: 64 bytes each.
+	 *
+	 * We'll get it in 2 steps due to mailbox size limitation - we can bring
+	 * up to 15 dwords every time. Therefore we'll bring 12 and 4 dwords.
+	 *
+	 * Older devices share a RETA table with the PF: 128 bytes.
+	 *
+	 * For them we do it in 3 steps. Therefore we'll bring it in 3 steps:
+	 * 12, 12 and 8 dwords in each step correspondingly.
+	 */
+
+	/* RETA[0..11] */
+	err = _ixgbevf_get_reta(hw, msgbuf, reta, 0, 12);
+	if (err)
+		return err;
+
+	if (hw->mac.type >= ixgbe_mac_X550_vf) {
+		/* RETA[12..15] */
+		err = _ixgbevf_get_reta(hw, msgbuf, reta, 12, 4);
+		if (err)
+			return err;
+
+	} else {
+		/* RETA[12..23] */
+		err = _ixgbevf_get_reta(hw, msgbuf, reta, 12, 12);
+		if (err)
+			return err;
+
+		/* RETA[24..31] */
+		err = _ixgbevf_get_reta(hw, msgbuf, reta, 24, 8);
+	}
+
+	return err;
+}
+
 /**
  *  ixgbevf_set_rar_vf - set device MAC address
  *  @hw: pointer to hardware structure
@@ -545,6 +632,7 @@ int ixgbevf_get_queues(struct ixgbe_hw *hw, unsigned int *num_tcs,
 	/* do nothing if API doesn't support ixgbevf_get_queues */
 	switch (hw->api_version) {
 	case ixgbe_mbox_api_11:
+	case ixgbe_mbox_api_12:
 		break;
 	default:
 		return 0;
