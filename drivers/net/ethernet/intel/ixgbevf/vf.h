@@ -38,6 +38,7 @@
 #include "mbx.h"
 
 struct ixgbe_hw;
+struct ixgbevf_adapter;
 
 /* iterator type for walking multicast address lists */
 typedef u8* (*ixgbe_mc_addr_itr) (struct ixgbe_hw *hw, u8 **mc_addr_ptr,
@@ -210,4 +211,5 @@ void ixgbevf_rlpml_set_vf(struct ixgbe_hw *hw, u16 max_size);
 int ixgbevf_negotiate_api_version(struct ixgbe_hw *hw, int api);
 int ixgbevf_get_queues(struct ixgbe_hw *hw, unsigned int *num_tcs,
 		       unsigned int *default_tc);
+int ixgbevf_get_reta(struct ixgbevf_adapter *adapter, u32 *reta);
 #endif /* __IXGBE_VF_H__ */
