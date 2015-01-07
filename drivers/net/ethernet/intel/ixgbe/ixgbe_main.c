@@ -3656,6 +3656,12 @@ static void ixgbe_configure_virtualization(struct ixgbe_adapter *adapter)
 		if (hw->mac.ops.set_ethertype_anti_spoofing)
 			hw->mac.ops.set_ethertype_anti_spoofing(hw, true, i);
 	}
+
+	/* Enable/Disable RSS query feature  */
+	for (i = 0; i < adapter->num_vfs; i++)
+		ixgbe_ndo_set_vf_rss_query_en(adapter->netdev, i,
+					      adapter->vfinfo[i].rss_query_enabled);
+
 }
 
 static void ixgbe_set_rx_buffer_len(struct ixgbe_adapter *adapter)
@@ -8096,6 +8102,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_set_vf_vlan	= ixgbe_ndo_set_vf_vlan,
 	.ndo_set_vf_rate	= ixgbe_ndo_set_vf_bw,
 	.ndo_set_vf_spoofchk	= ixgbe_ndo_set_vf_spoofchk,
+	.ndo_set_vf_rss_query_en = ixgbe_ndo_set_vf_rss_query_en,
 	.ndo_get_vf_config	= ixgbe_ndo_get_vf_config,
 	.ndo_get_stats64	= ixgbe_get_stats64,
 #ifdef CONFIG_IXGBE_DCB
