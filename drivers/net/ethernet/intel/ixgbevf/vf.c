@@ -279,6 +279,10 @@ static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
 
 	msgbuf[0] &= ~IXGBE_VT_MSGTYPE_CTS;
 
+	/* If the operation has been refused by a PF return -EPERM */
+	if (msgbuf[0] == (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_NACK))
+		return -EPERM;
+
 	/* If we didn't get an ACK there must have been
 	 * some sort of mailbox error so we should treat it
 	 * as such.
@@ -322,6 +326,10 @@ int ixgbevf_get_rss_key(struct ixgbe_hw *hw, u8 *rss_key)
 		return err;
 
 	msgbuf[0] &= ~IXGBE_VT_MSGTYPE_CTS;
+
+	/* If the operation has been refused by a PF return -EPERM */
+	if (msgbuf[0] == (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_NACK))
+		return -EPERM;
 
 	/* If we didn't get an ACK there must have been
 	 * some sort of mailbox error so we should treat it
