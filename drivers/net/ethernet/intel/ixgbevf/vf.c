@@ -259,7 +259,8 @@ static s32 ixgbevf_set_uc_addr_vf(struct ixgbe_hw *hw, u32 index, u8 *addr)
 static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
 				    u32 *reta, u32 reta_offset_dw, u32 dwords)
 {
-	int err;
+	int err, i;
+	u8 *hw_reta = (u8*)(msgbuf + 1);
 
 	msgbuf[0]                    = IXGBE_VF_GET_RETA;
 	msgbuf[IXGBE_VF_RETA_SZ]     = dwords;
@@ -288,7 +289,11 @@ static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
 	if (msgbuf[0] != (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_ACK))
 		return IXGBE_ERR_MBX;
 
-	memcpy(reta + reta_offset_dw, msgbuf + 1, 4 * dwords);
+	/* HW RETA is an array of u8, while ethtool buffer is an array of u32.
+	 * Therefore we need to "expand" the HW RETA into the ethtool buffer.
+	 */
+	for (i = 0; i < dwords * 4; i++)
+		reta[reta_offset_dw + i] = hw_reta[i];
 
 	return 0;
 }
