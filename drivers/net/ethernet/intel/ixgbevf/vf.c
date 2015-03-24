@@ -260,7 +260,7 @@ static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
 				    u32 *reta, u32 reta_offset_dw, u32 dwords)
 {
 	int err, i;
-	u8 *hw_reta = (u8*)(msgbuf + 1);
+	u8 *hw_reta = (u8 *)&msgbuf[1];
 
 	msgbuf[0]                    = IXGBE_VF_GET_RETA;
 	msgbuf[IXGBE_VF_RETA_SZ]     = dwords;
@@ -293,7 +293,7 @@ static inline int _ixgbevf_get_reta(struct ixgbe_hw *hw, u32 *msgbuf,
 	 * Therefore we need to "expand" the HW RETA into the ethtool buffer.
 	 */
 	for (i = 0; i < dwords * 4; i++)
-		reta[reta_offset_dw + i] = hw_reta[i];
+		reta[reta_offset_dw * 4 + i] = hw_reta[i];
 
 	return 0;
 }
