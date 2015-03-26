@@ -956,12 +956,12 @@ static int ixgbe_get_vf_queues(struct ixgbe_adapter *adapter,
 static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	int i;
-	u32 *reta = &msgbuf[1];
-	u32 mask = 0;
+	u32 i, j;
+	u32 *out_buf = &msgbuf[1];
+	const u8 *reta = adapter->rss_indir_tbl;
+	u8 mask = 0;
 	u32 psrtype;
-	u32 reta_offset_dw = msgbuf[IXGBE_VF_RETA_OFFSET];
-	u32 dwords = msgbuf[IXGBE_VF_RETA_SZ];
+	u32 reta_size = ixgbe_rss_indir_tbl_entries(adapter);
 
 	/* verify the PF is supporting the correct API */
 	if (!adapter->vfinfo[vf].rss_query_enabled ||
@@ -979,27 +979,17 @@ static int ixgbe_get_vf_reta(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 	 */
 
 	if ((psrtype & (1 << 29)) == (1 << 29))
-		mask = 0x01010101;
+		mask = 0x01;
 	else if ((psrtype & (2 << 29)) == (2 << 29))
-		mask = 0x03030303;
-	else
-		mask = 0;
+		mask = 0x03;
 
-	switch (hw->mac.type) {
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-		/* Read the appropriate portion of RETA */
-		for (i = 0; i < dwords; i++)
-			reta[i] = IXGBE_READ_REG(hw,
-						IXGBE_RETA(i + reta_offset_dw));
-		break;
-	default:
-		return -1;
-	}
-
-	/* Mask the relevant bits */
-	for (i = 0; i < dwords; i++)
-		reta[i] &= mask;
+	/* Compress the RETA by saving only 2 bits from each entry. This way
+	 * we will be able to transfer the whole RETA in a single mailbox
+	 * operation.
+	 */
+	for (i = 0; i < reta_size / 16; i++)
+		for (j = 0; j < 16; j++)
+			out_buf[i] |= (u32)(reta[16 * i + j] & mask) << (2 * j);
 
 	return 0;
 }
