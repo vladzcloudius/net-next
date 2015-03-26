@@ -257,22 +257,27 @@ static s32 ixgbevf_set_uc_addr_vf(struct ixgbe_hw *hw, u32 index, u8 *addr)
 }
 
 static inline int _ixgbevf_get_reta_locked(struct ixgbe_hw *hw, u32 *msgbuf,
-					   u32 *reta, u32 reta_offset_dw,
-					   u32 dwords)
+					   u32 *reta)
 {
-	int err, i;
-	u8 *hw_reta = (u8 *)&msgbuf[1];
+	int err, i, j;
+	u32 *hw_reta = &msgbuf[1];
 
-	msgbuf[0]                    = IXGBE_VF_GET_RETA;
-	msgbuf[IXGBE_VF_RETA_SZ]     = dwords;
-	msgbuf[IXGBE_VF_RETA_OFFSET] = reta_offset_dw;
+	/* We have to use a mailbox for 82599 and x540 devices only.
+	 * For these devices RETA has 128 entries.
+	 * Also these VFs support up to 4 RSS queues and PF will send us 16 RETA
+	 * entries in each DWORD.
+	 */
+	int dwords = 128 / 16;
 
-	err = hw->mbx.ops.write_posted(hw, msgbuf, 3);
+	msgbuf[0] = IXGBE_VF_GET_RETA;
+
+	err = hw->mbx.ops.write_posted(hw, msgbuf, 1);
 
 	if (err)
 		return err;
 
-	err = hw->mbx.ops.read_posted(hw, msgbuf, 1 + dwords);
+
+	err = hw->mbx.ops.read_posted(hw, msgbuf, dwords + 1);
 
 	if (err)
 		return err;
@@ -290,39 +295,11 @@ static inline int _ixgbevf_get_reta_locked(struct ixgbe_hw *hw, u32 *msgbuf,
 	if (msgbuf[0] != (IXGBE_VF_GET_RETA | IXGBE_VT_MSGTYPE_ACK))
 		return IXGBE_ERR_MBX;
 
-	/* HW RETA is an array of u8, while ethtool buffer is an array of u32.
-	 * Therefore we need to "expand" the HW RETA into the ethtool buffer.
-	 */
-	for (i = 0; i < dwords * 4; i++)
-		reta[reta_offset_dw * 4 + i] = hw_reta[i];
+	for (i = 0; i < dwords; i++)
+		for (j = 0; j < 16; j++)
+			reta[i * 16 + j] = (hw_reta[i] >> (2 * j)) & 0x3;
 
 	return 0;
-}
-
-/**
- * _ixgbevf_get_reta - read a subsection of a VF's RETA table
- *
- * @a               pointer to a port handle
- * @msgbuf          mailbox buffer to use
- * @reta            ethtool output buffer
- * @reta_offset_dw  HW RETA DWORD index to start from
- * @dwords          number of HW RETA DWORDs to fetch
- *
- * This function ensures the atomicy of a mailbox operation using the
- * adapter.mbx_lock spinlock.
- */
-static inline int _ixgbevf_get_reta(struct ixgbevf_adapter *a,
-				    u32 *msgbuf, u32 *reta, u32 reta_offset_dw,
-				    u32 dwords)
-{
-	int rc;
-
-	spin_lock_bh(&a->mbx_lock);
-	rc = _ixgbevf_get_reta_locked(&a->hw, msgbuf, reta, reta_offset_dw,
-				      dwords);
-	spin_unlock_bh(&a->mbx_lock);
-
-	return rc;
 }
 
 static inline int ixgbevf_get_rss_key_locked(struct ixgbe_hw *hw, u8 *rss_key)
@@ -414,27 +391,9 @@ int ixgbevf_get_reta(struct ixgbevf_adapter *adapter, u32 *reta)
 	    adapter->hw.mac.type >= ixgbe_mac_X550_vf)
 		return -EPERM;
 
-	/* We'll get it in 2 steps due to mailbox size limitation - we can bring
-	 * up to 15 dwords every time. Therefore we'll bring 12 and 4 dwords.
-	 *
-	 * Older devices share a RETA table with the PF: 128 bytes.
-	 *
-	 * For them we do it in 3 steps. Therefore we'll bring it in 3 steps:
-	 * 12, 12 and 8 dwords in each step correspondingly.
-	 */
-
-	/* RETA[0..11] */
-	err = _ixgbevf_get_reta(adapter, msgbuf, reta, 0, 12);
-	if (err)
-		return err;
-
-	/* RETA[12..23] */
-	err = _ixgbevf_get_reta(adapter, msgbuf, reta, 12, 12);
-	if (err)
-		return err;
-
-	/* RETA[24..31] */
-	err = _ixgbevf_get_reta(adapter, msgbuf, reta, 24, 8);
+	spin_lock_bh(&adapter->mbx_lock);
+	err = _ixgbevf_get_reta_locked(&adapter->hw, msgbuf, reta);
+	spin_unlock_bh(&adapter->mbx_lock);
 
 	return err;
 }

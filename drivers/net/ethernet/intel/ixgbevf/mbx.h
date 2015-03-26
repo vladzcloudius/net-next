@@ -110,11 +110,6 @@ enum ixgbe_pfvf_api_rev {
 
 /* mailbox API, version 1.2 VF requests */
 #define IXGBE_VF_GET_RETA	0x0a	/* VF request for RETA */
-
-/* GET_RETA request data indices within the mailbox */
-#define IXGBE_VF_RETA_SZ        1	/* Number of RETA DWs to bring */
-#define IXGBE_VF_RETA_OFFSET    2	/* Offset in RETA */
-
 #define IXGBE_VF_GET_RSS_KEY	0x0b	/* get RSS hash key */
 
 /* length of permanent address message returned from PF */
