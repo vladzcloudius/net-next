@@ -311,6 +311,13 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_ERETA(_i)	(0x0EE80 + ((_i) * 4))  /* 96 of these (0-95) */
 #define IXGBE_RSSRK(_i) (0x05C80 + ((_i) * 4))  /* 10 of these (0-9) */
 
+/* maximum number of RETA entries among all devices supported by ixgbe
+ * driver: currently it's x550 device in non-SRIOV mode
+ */
+#define IXGBE_MAX_RETA_ENTRIES 512
+
+#define IXGBE_RSS_KEY_SIZE     40  /* size of RSS Hash Key in bytes */
+
 /* Registers for setting up RSS on X550 with SRIOV
  * _p - pool number (0..63)
  * _i - index (0..10 for PFVFRSSRK, 0..15 for PFVFRETA)

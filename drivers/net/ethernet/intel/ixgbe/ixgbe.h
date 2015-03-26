@@ -766,6 +766,8 @@ struct ixgbe_adapter {
 
 	u8 default_up;
 	unsigned long fwd_bitmask; /* Bitmask indicating in use pools */
+	u8 rss_indir_tbl[IXGBE_MAX_RETA_ENTRIES];
+	u32 rss_key[IXGBE_RSS_KEY_SIZE / sizeof(u32)];
 };
 
 static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
